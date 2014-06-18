@@ -10,19 +10,29 @@ import time
 import hashlib
 import urllib
 import urllib2
-from lxml import etree
+import thread
+import re
+##from lxml import etree
+from xml.etree import ElementTree
+
 from weixin import WeiXinClient
+from lyric import LyricClient, Lyric
+
+from weixin import getUserByName
 #from yeelink import YeeLinkClient
 
 
-_TOKEN = 'your_token'
+
+_TOKEN = '352202198801050537'
 _URLS = (
     '/*', 'weixinserver',
 )
 
+Custon_send_text_data_template  = '{"touser":"%(touser)s", "msgtype":"text", "text":{ "content":"%(content)s"}}'
 
 def _check_hash(data):
     signature = data.signature
+##    print 'signature:',signature
     timestamp = data.timestamp
     nonce = data.nonce
     list = [_TOKEN, timestamp, nonce]
@@ -30,6 +40,7 @@ def _check_hash(data):
     sha1 = hashlib.sha1()
     map(sha1.update, list)
     hashcode = sha1.hexdigest()
+##    print 'hashcode:',hashcode
     if hashcode == signature:
         return True
     return False
@@ -85,7 +96,9 @@ def _take_snapshot(addr, port, client):
 
 
 def _do_event_subscribe(server, fromUser, toUser, doc):
-    return server._reply_text(fromUser, toUser, u'hello!')
+    words = u'''当前为搜歌词模式， 请输入 【歌曲名】
+    或者 【歌曲名】 【歌手】 搜索指定的歌词 ！ '''
+    return server._reply_text(fromUser, toUser, words)
 
 
 def _do_event_unsubscribe(server, fromUser, toUser, doc):
@@ -205,20 +218,120 @@ _weixin_click_table = {
 }
 
 
+
 class weixinserver:
 
     def __init__(self):
         self.app_root = os.path.dirname(__file__)
         self.templates_root = os.path.join(self.app_root, 'templates')
         self.render = web.template.render(self.templates_root)
-        self.client = WeiXinClient('your_appid', \
-                'your_secret', fc = True, path = '.')
+        self.client = WeiXinClient('wxe3da4718bc1a9a18', \
+                '2238eb7e0a13748039ec31f0309bbf68', fc = True, path = '.')
+
         self.client.request_access_token()
+
+        self.lyric_client = LyricClient()
         #self.yee = YeeLinkClient('yee_key')
+
+    def _downLoad_lyric_thread(self, fromUser, toUser, text_content):
+
+        lyric = None
+        song = ''
+
+        if isinstance(text_content, tuple):
+            song, artist_name = text_content
+            lyrics = self.lyric_client.getLyricsBySongnameFromHttp(song, artist_name)
+            if (len(lyrics) >= 1):
+                lyric = lyrics[0]
+        elif isinstance(text_content, Lyric):
+            lyric = text_content
+            song = lyric.song
+        elif isinstance(text_content, unicode) or isinstance(text_content, str):
+            reply_content = Custon_send_text_data_template % {'touser':fromUser, 'content':text_content}
+            self.client.message.custom.send.post(body=reply_content)
+            thread.exit_thread()
+            return
+
+        if isinstance(song, unicode):
+            song = song.encode('utf-8')
+
+        if lyric:
+            try:
+
+                text_content = self.lyric_client.downLoad_lyric(lyric)
+            except Exception, e:
+                text_content = '找不到歌曲:%s'%song
+
+        else:
+
+            text_content = '找不到歌曲:%s'%song
+
+        reply_content = Custon_send_text_data_template % {'touser':fromUser, 'content':text_content}
+
+        self.client.message.custom.send.post(body=reply_content)
+
+        thread.exit_thread()
+
+    def _deal_with_text_impl(self, fromUser, toUser, content):
+
+        p = re.compile(r'\s+')
+
+        args = p.split(content.encode('utf8'))
+
+        if args[0] == '':
+            del args[0]
+
+        if args[-1] == '':
+            del args[-1]
+
+        print 'args:', args
+
+        user = getUserByName(fromUser)
+
+        if user.mode == 'geci':
+
+##            if len(args) == 1 and args[0].isdigit():
+##                #用户选择一个歌词文件
+##                text_content = self.lyric_client.do_deal_choiceForUser(user, int(args[0]))
+##                text_content = text_content.decode('utf-8')
+
+            if len(args) == 1 or len(args) == 2:
+                #用歌手名和歌曲名来搜歌词目录
+                song = args[0]
+                artist_name = args[1] if len(args) == 2 else None
+                text_content = self.lyric_client.doSearchBySongnameForUserFromLocal(user, song, artist_name)
+
+                print type(text_content)
+
+                if isinstance(text_content, unicode) or isinstance(text_content, str):
+
+                    return text_content
+                else:
+
+                    thread.start_new_thread(self._downLoad_lyric_thread, (fromUser, toUser, text_content))
+                    return '恭喜您是第一个搜索此歌词的达人，请耐心等候...'
+
+##                text_content = text_content.encode('utf-8')
+
+            else:
+                return '输入参数不正确'
+
+        return '当前不处于歌词模式'
+
+##    def _deal_with_text_thread(self, fromUser, toUser, content):
+##
+##        text_content = self._deal_with_text_impl(fromUser, toUser, content)
+##        reply_content = Custon_send_text_data_template % {'touser':fromUser, 'content':text_content}
+####        print 'reply_content:',reply_content
+##
+##        print self.client.message.custom.send.post(body=reply_content)
+##        thread.exit_thread()
 
     def _recv_text(self, fromUser, toUser, doc):
         content = doc.find('Content').text
-        reply_msg = content
+
+        reply_msg = self._deal_with_text_impl(fromUser, toUser, content)
+
         return self._reply_text(fromUser, toUser, reply_msg)
 
     def _recv_event(self, fromUser, toUser, doc):
@@ -271,17 +384,18 @@ class weixinserver:
 
     def GET(self):
         data = web.input()
+##        print 'get data:',data
         if _check_hash(data):
             return data.echostr
 
     def POST(self):
         str_xml = web.data()
-        doc = etree.fromstring(str_xml)
+        doc = ElementTree.fromstring(str_xml)
         msgType = doc.find('MsgType').text
         fromUser = doc.find('FromUserName').text
         toUser = doc.find('ToUserName').text
         if msgType == 'text':
-            return self._recv_text(fromUser, toUser, doc)
+            return  self._recv_text(fromUser, toUser, doc)
         if msgType == 'event':
             return self._recv_event(fromUser, toUser, doc)
         if msgType == 'image':
@@ -299,15 +413,43 @@ class weixinserver:
 
 
 
-#web.config.debug = False
+web.config.debug = False
 
 application = web.application(_URLS, globals()).wsgifunc()
 
 
 
 if __name__ == "__main__":
-##    app = web.application(_URLS, globals())
-##    app.run()
+
     #import wsgi
     from bottle import run
-    run(app=application, host='localhost', port=8081)
+    run(app=application, host='0.0.0.0', port=80)
+
+##    weixin_s = weixinserver()
+##    str_xml = ''' <xml>
+## <ToUserName><![CDATA[toUser]]></ToUserName>
+## <FromUserName><![CDATA[fromUser]]></FromUserName>
+## <CreateTime>1348831860</CreateTime>
+## <MsgType><![CDATA[text]]></MsgType>
+## <Content><![CDATA[ 龙的传人    ]]></Content>
+## <MsgId>1234567890123456</MsgId>
+## </xml>'''
+##    doc = ElementTree.fromstring(str_xml)
+##    weixin_s._recv_text("wgb", "me", doc)
+##
+##    import time
+##    time.sleep(3)
+##    content = raw_input("input:")
+##
+##    str_xml = ''' <xml>
+## <ToUserName><![CDATA[toUser]]></ToUserName>
+## <FromUserName><![CDATA[fromUser]]></FromUserName>
+## <CreateTime>1348831860</CreateTime>
+## <MsgType><![CDATA[text]]></MsgType>
+## <Content><![CDATA[ 1  ]]></Content>
+## <MsgId>1234567890123456</MsgId>
+## </xml>'''
+##    doc = ElementTree.fromstring(str_xml)
+##    weixin_s._recv_text("wgb", "me", doc)
+##
+##    content = raw_input("input:")

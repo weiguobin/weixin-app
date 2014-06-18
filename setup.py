@@ -5,7 +5,7 @@ import weixin
 
 kw = dict(
     name = 'weixinpy',
-    version = weixin.__version__,
+##    version = weixin.__version__,
     description = 'Python client SDK for Micro Message Public Platform API',
     long_description = open('README', 'r').read(),
     author = 'Liang Cha',
