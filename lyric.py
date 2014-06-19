@@ -21,8 +21,9 @@ from utils import mkdir
 import urllib2
 import os
 import re
+import thread
 
-##from weixind import APP_CWD
+from constant import Custon_send_text_data_template
 
 ##import sys
 ##reload(sys)
@@ -299,7 +300,7 @@ class LyricClient(object):
 
         return content
 
-    def doSearchBySongnameForUserFromLocal(self, user, songName, artist_name = None):
+    def _doSearchBySongnameForUserFromLocal(self, songName, artist_name = None):
 
         # 从本地数据库查找
         lyrics = _DB_getLyricsBySong(songName, artist_name)
@@ -325,7 +326,7 @@ class LyricClient(object):
 
 
 
-    def downLoad_lyric(self, lyric):
+    def _downLoad_lyricFromHttp(self, lyric):
 ##        print 'downLoad_lyric'
         cwd = os.getcwd()
         print 'lyric.lrc:',lyric.lrc
@@ -411,22 +412,85 @@ class LyricClient(object):
         else:
             return None
 
+    def _downLoad_lyric_thread(self, fromUser, toUser, text_content, wc_client):
+
+        lyric = None
+        song = ''
+
+        if isinstance(text_content, tuple):
+            song, artist_name = text_content
+            lyrics = self.getLyricsBySongnameFromHttp(song, artist_name)
+            if (len(lyrics) >= 1):
+                lyric = lyrics[0]
+        elif isinstance(text_content, Lyric):
+            lyric = text_content
+            song = lyric.song
+        elif isinstance(text_content, unicode) or isinstance(text_content, str):
+            reply_content = Custon_send_text_data_template % {'touser':fromUser, 'content':text_content}
+            wc_client.message.custom.send.post(body=reply_content)
+            thread.exit_thread()
+            return
+
+        if isinstance(song, unicode):
+            song = song.encode('utf-8')
+
+        if lyric:
+            try:
+
+                text_content = self._downLoad_lyricFromHttp(lyric)
+            except Exception, e:
+                text_content = '找不到歌曲:%s'%song
+
+        else:
+
+            text_content = '找不到歌曲:%s'%song
+
+        reply_content = Custon_send_text_data_template % {'touser':fromUser, 'content':text_content}
+
+        wc_client.message.custom.send.post(body=reply_content)
+
+        thread.exit_thread()
+
+    def deal_with_text_impl(self, fromUser, toUser, content, wc_client):
+
+        p = re.compile(r'\s+')
+
+        args = p.split(content.encode('utf8'))
+
+        if args[0] == '':
+            del args[0]
+
+        if args[-1] == '':
+            del args[-1]
+
+        print '[geci] args:', args
+
+        if len(args) == 1 or len(args) == 2:
+            #用歌手名和歌曲名来搜歌词目录
+            song = args[0]
+            artist_name = args[1] if len(args) == 2 else None
+            text_content = self._doSearchBySongnameForUserFromLocal(song, artist_name)
+
+##            print type(text_content)
+
+            if isinstance(text_content, unicode) or isinstance(text_content, str):
+
+                return text_content
+            else:
+
+                thread.start_new_thread(self._downLoad_lyric_thread, (fromUser, toUser, text_content, wc_client))
+
+                return '恭喜您是第一位搜索此歌词的达人，请耐心等候...'
+
+##                text_content = text_content.encode('utf-8')
+
+        else:
+            return '输入参数不正确'
+
 
 def main():
 
     lyric_client = LyricClient()
-    #http://geci.me/api/lyric/:song
-    song = u"海阔天空"
-    artist = u"Beyond"
-
-    from weixin import getUserByName
-    user = getUserByName(u'11')
-    text = lyric_client.doSearchBySongnameForUser(user, song, artist)
-    print type(text)
-##    print user.geci
-
-    lyric_client.do_deal_choiceForUser(user, 1)
-
 
 
 if __name__ == '__main__':

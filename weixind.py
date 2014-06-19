@@ -16,7 +16,7 @@ import re
 from xml.etree import ElementTree
 
 from weixin import WeiXinClient
-from lyric import LyricClient, Lyric
+from lyric import LyricClient
 
 from weixin import getUserByName
 #from yeelink import YeeLinkClient
@@ -28,7 +28,7 @@ _URLS = (
     '/*', 'weixinserver',
 )
 
-Custon_send_text_data_template  = '{"touser":"%(touser)s", "msgtype":"text", "text":{ "content":"%(content)s"}}'
+
 
 def _check_hash(data):
     signature = data.signature
@@ -233,104 +233,26 @@ class weixinserver:
         self.lyric_client = LyricClient()
         #self.yee = YeeLinkClient('yee_key')
 
-    def _downLoad_lyric_thread(self, fromUser, toUser, text_content):
 
-        lyric = None
-        song = ''
-
-        if isinstance(text_content, tuple):
-            song, artist_name = text_content
-            lyrics = self.lyric_client.getLyricsBySongnameFromHttp(song, artist_name)
-            if (len(lyrics) >= 1):
-                lyric = lyrics[0]
-        elif isinstance(text_content, Lyric):
-            lyric = text_content
-            song = lyric.song
-        elif isinstance(text_content, unicode) or isinstance(text_content, str):
-            reply_content = Custon_send_text_data_template % {'touser':fromUser, 'content':text_content}
-            self.client.message.custom.send.post(body=reply_content)
-            thread.exit_thread()
-            return
-
-        if isinstance(song, unicode):
-            song = song.encode('utf-8')
-
-        if lyric:
-            try:
-
-                text_content = self.lyric_client.downLoad_lyric(lyric)
-            except Exception, e:
-                text_content = '找不到歌曲:%s'%song
-
-        else:
-
-            text_content = '找不到歌曲:%s'%song
-
-        reply_content = Custon_send_text_data_template % {'touser':fromUser, 'content':text_content}
-
-        self.client.message.custom.send.post(body=reply_content)
-
-        thread.exit_thread()
-
-    def _deal_with_text_impl(self, fromUser, toUser, content):
-
-        p = re.compile(r'\s+')
-
-        args = p.split(content.encode('utf8'))
-
-        if args[0] == '':
-            del args[0]
-
-        if args[-1] == '':
-            del args[-1]
-
-        print 'args:', args
+    def deal_with_text_impl(self, fromUser, toUser, content):
 
         user = getUserByName(fromUser)
 
         if user.mode == 'geci':
 
-##            if len(args) == 1 and args[0].isdigit():
-##                #用户选择一个歌词文件
-##                text_content = self.lyric_client.do_deal_choiceForUser(user, int(args[0]))
-##                text_content = text_content.decode('utf-8')
+            return self.lyric_client.deal_with_text_impl(fromUser, toUser, content, self.client)
 
-            if len(args) == 1 or len(args) == 2:
-                #用歌手名和歌曲名来搜歌词目录
-                song = args[0]
-                artist_name = args[1] if len(args) == 2 else None
-                text_content = self.lyric_client.doSearchBySongnameForUserFromLocal(user, song, artist_name)
+        else:
+            pass
 
-                print type(text_content)
-
-                if isinstance(text_content, unicode) or isinstance(text_content, str):
-
-                    return text_content
-                else:
-
-                    thread.start_new_thread(self._downLoad_lyric_thread, (fromUser, toUser, text_content))
-                    return '恭喜您是第一个搜索此歌词的达人，请耐心等候...'
-
-##                text_content = text_content.encode('utf-8')
-
-            else:
-                return '输入参数不正确'
 
         return '当前不处于歌词模式'
 
-##    def _deal_with_text_thread(self, fromUser, toUser, content):
-##
-##        text_content = self._deal_with_text_impl(fromUser, toUser, content)
-##        reply_content = Custon_send_text_data_template % {'touser':fromUser, 'content':text_content}
-####        print 'reply_content:',reply_content
-##
-##        print self.client.message.custom.send.post(body=reply_content)
-##        thread.exit_thread()
 
     def _recv_text(self, fromUser, toUser, doc):
         content = doc.find('Content').text
 
-        reply_msg = self._deal_with_text_impl(fromUser, toUser, content)
+        reply_msg = self.deal_with_text_impl(fromUser, toUser, content)
 
         return self._reply_text(fromUser, toUser, reply_msg)
 
@@ -390,6 +312,7 @@ class weixinserver:
 
     def POST(self):
         str_xml = web.data()
+##        print 'str_xml:',str_xml
         doc = ElementTree.fromstring(str_xml)
         msgType = doc.find('MsgType').text
         fromUser = doc.find('FromUserName').text
