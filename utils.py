@@ -172,7 +172,7 @@ def _http_call(the_url, method, token,  **kw):
         req.add_header('Content-Type', 'multipart/form-data; boundary=%s' % boundary)
     try:
 ##        resp = urllib2.urlopen(req, timeout = 5)
-        resp = urllib2.urlopen(req)
+        resp = urllib2.urlopen(req, timeout=5)
         body = resp.read()
 
         try:
@@ -273,6 +273,7 @@ class _Executable(object):
                 self._method, self._client.access_token, **kw)
         except APIError,e:
             if e.error_code == 40001:
+                print 'APIError and do request_access_token()'
                 self._client.request_access_token()
 
                 return _http_call('%s%s' %(self._client.api_url, self._path), \

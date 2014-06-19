@@ -97,6 +97,8 @@ def _DB_addArtistByDict(**kwargs):
 
 def _DB_getLyricsBySong(songName, artist_name = None):
 
+##    print '_DB_getLyricsBySong song:',songName
+
     clause = (Lyric.q.song == songName)
     if artist_name:
         clause = sqlobject.AND(Lyric.q.song == songName, \
@@ -224,10 +226,10 @@ class LyricClient(object):
         lyrics = []
 
         try:
-            print 'run _getLyricsBySongnameFromHttp(songName, artist_name) ...'
+##            print 'run _getLyricsBySongnameFromHttp(songName, artist_name) ...'
             #把该songName的歌词条目下载到本地
             rjson = self._getLyricsBySongnameFromHttp(songName, artist_name)
-
+##            print 'getLyricsBySongnameFromHttp:',rjson
             if rjson['code'] == 0:
                 result = rjson['result']
 
@@ -249,6 +251,8 @@ class LyricClient(object):
 
                     kwargs['artist_id'] = artist
                     kwargs['source'] = self.source
+
+                    kwargs['song'] = songName
 
                     lyric = _DB_addLyricByDict(**kwargs)
 
@@ -361,7 +365,7 @@ class LyricClient(object):
 
 
     def _read_lyric_from_local(self, lyric):
-        print '_read_lyric_from_local'
+##        print '_read_lyric_from_local'
         cwd = os.getcwd()
 ##        print 'os.getcwd:',cwd
 
@@ -379,7 +383,7 @@ class LyricClient(object):
 
 
     def do_deal_choiceForUser(self, user, choice):
-        print 'do_deal_choiceForUser'
+##        print 'do_deal_choiceForUser'
         if user.mode == 'geci':
             if not isinstance(choice, int):
                 return None
@@ -439,11 +443,13 @@ class LyricClient(object):
 
                 text_content = self._downLoad_lyricFromHttp(lyric)
             except Exception, e:
-                text_content = '找不到歌曲:%s'%song
+                text_content = '找不到歌曲:%s %s'%(song,artist_name) if artist_name \
+                    else '找不到歌曲:%s'%song
 
         else:
 
-            text_content = '找不到歌曲:%s'%song
+            text_content = '找不到歌曲:%s %s'%(song,artist_name) if artist_name \
+                else '找不到歌曲:%s'%song
 
         reply_content = Custon_send_text_data_template % {'touser':fromUser, 'content':text_content}
 
@@ -480,7 +486,8 @@ class LyricClient(object):
 
                 thread.start_new_thread(self._downLoad_lyric_thread, (fromUser, toUser, text_content, wc_client))
 
-                return '恭喜您是第一位搜索此歌词的达人，请耐心等候...'
+                return '恭喜您是第一位搜索歌曲[%s %s]的达人，请耐心等候...'%(song,artist_name) if artist_name \
+                    else '恭喜您是第一位搜索歌曲[%s]的达人，请耐心等候...'%song
 
 ##                text_content = text_content.encode('utf-8')
 

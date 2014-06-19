@@ -25,7 +25,7 @@ from weixin import getUserByName
 
 _TOKEN = '352202198801050537'
 _URLS = (
-    '/*', 'weixinserver',
+    '/*', 'WeixinServer',
 )
 
 
@@ -143,8 +143,12 @@ def _do_click_V1001_YELLOW_CHICK(server, fromUser, toUser, doc):
     pass
 
 
-def _do_click_V1001_GOOD(server, fromUser, toUser, doc):
-    pass
+def _do_click_V1001_MODE_GECI(server, fromUser, toUser, doc):
+    user = getUserByName(fromUser)
+    user.mode == 'geci'
+
+    reply_msg = '用户当前为搜歌词模式'
+    return server._reply_text(fromUser, toUser, reply_msg)
 
 
 def _do_click_V1001_LED_ON(server, fromUser, toUser, doc):
@@ -213,25 +217,24 @@ _weixin_click_table = {
     'V1001_LED_ON'          :   _do_click_V1001_LED_ON,
     'V1001_LED_OFF'         :   _do_click_V1001_LED_OFF,
     'V1001_TEMPERATURES'    :   _do_click_V1001_TEMPERATURES,
-    'V1001_GOOD'            :   _do_click_V1001_GOOD,
+    'V1001_MODE_GECI'       :   _do_click_V1001_MODE_GECI,
     'V1001_SNAPSHOT'        :   _do_click_SNAPSHOT
 }
 
 
 
-class weixinserver:
+class WeixinServer:
+
+    app_root = os.path.dirname(__file__)
+    templates_root = os.path.join(app_root, 'templates')
+    render = web.template.render(templates_root)
+    wc_client = WeiXinClient('wxe3da4718bc1a9a18', \
+            '2238eb7e0a13748039ec31f0309bbf68', fc = True, path = '.')
+    lyric_client = LyricClient()
 
     def __init__(self):
-        self.app_root = os.path.dirname(__file__)
-        self.templates_root = os.path.join(self.app_root, 'templates')
-        self.render = web.template.render(self.templates_root)
-        self.client = WeiXinClient('wxe3da4718bc1a9a18', \
-                '2238eb7e0a13748039ec31f0309bbf68', fc = True, path = '.')
 
-        self.client.request_access_token()
-
-        self.lyric_client = LyricClient()
-        #self.yee = YeeLinkClient('yee_key')
+        self.wc_client.request_access_token()
 
 
     def deal_with_text_impl(self, fromUser, toUser, content):
@@ -240,7 +243,7 @@ class weixinserver:
 
         if user.mode == 'geci':
 
-            return self.lyric_client.deal_with_text_impl(fromUser, toUser, content, self.client)
+            return self.lyric_client.deal_with_text_impl(fromUser, toUser, content, self.wc_client)
 
         else:
             pass

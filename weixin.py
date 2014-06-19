@@ -71,6 +71,7 @@ class WeiXinClient(object):
         token_key = 'access_token_%s' %(self.app_id)
         expires_key = 'expires_%s' %(self.app_id)
         access_token = self.mc.get(token_key)
+##        print 'request_access_token:',access_token
         expires = self.mc.get(expires_key)
         if access_token == None or expires == None or \
                 int(expires) < int(time.time()):
@@ -80,7 +81,7 @@ class WeiXinClient(object):
             self.access_token = str(rjson['access_token'])
             expires_in = int(rjson['expires_in'])
 
-            print 'access_token:' , self.access_token
+            print 'new access_token:' , self.access_token
             print 'expires_in:' , expires_in
 
             self.expires = int(time.time()) + expires_in
